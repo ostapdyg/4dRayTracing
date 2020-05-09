@@ -68,5 +68,29 @@ struct v4d_generic
     inline operator v4d_generic<float>()   const { return {static_cast<float>(this->x),   static_cast<float>(this->y),   static_cast<float>(this->z),   static_cast<float>(this->z)  }; }
     inline operator v4d_generic<double>()  const { return {static_cast<double>(this->x),  static_cast<double>(this->y),  static_cast<double>(this->z),  static_cast<double>(this->z) }; }
 };
+typedef v4d_generic<float> vf4d;
+
+template<class T>
+struct m4x4d_generic
+{
+    v4d_generic<v4d_generic<T>> m;
+    inline m4x4d_generic(v4d_generic<t> _x, v4d_generic<t> _y, v4d_generic<t> _z, v4d_generic<t> _t) : m(_x, _y, _z, _t) {}
+    inline m4x4d_generic(m4x4d_generic &rhs) : m(rhs.m) {}
+    inline m4x4d_generic(T x1, T x2, T x3, T x4,
+                         T y1, T y2, T y3, T y4,
+                         T z1, T z2, T z3, T z4,
+                         T t1, T t2, T t3, T t4) : 
+                         m(v4d_generic{x1, x2, x3, x4},
+                           v4d_generic{y1, y2, y3, y4},
+                           v4d_generic{z1, z2, z3, z4},
+                           v4d_generic{t1, t2, t3, t4}) {}
+
+    inline m4x4d_generic(m4x4d_generic &rhs) 
+    {
+        
+    }
+};
+
+typedef m4x4d_generic<float> mf4x4d;
 
 #endif

@@ -7,9 +7,10 @@
 #include <exception>
 #include "v4d.h"
 
-#define MAX_DISTANCE 100
+#define MAX_DISTANCE 10
 #define MAX_STEPS 100
 #define EPSILON 0.01f
+#define EPSILON_NORMAL 0.01f
 
 struct Hittable {
     virtual float sdistance(const v4d_generic<float>& p) = 0;
@@ -44,7 +45,16 @@ struct Segment:Hittable{
     }
 };
 
+v4d_generic<float> Normal(v4d_generic<float> p, Hittable* scene){
+    return v4d_generic<float>{
+            scene->sdistance(v4d_generic<float>(p.x+EPSILON_NORMAL, p.y, p.z, p.t)) - scene->sdistance(v4d_generic<float>(p.x-EPSILON_NORMAL, p.y, p.z, p.t)),
+            scene->sdistance(v4d_generic<float>(p.x+EPSILON_NORMAL, p.y, p.z, p.t)) - scene->sdistance(v4d_generic<float>(p.x-EPSILON_NORMAL, p.y, p.z, p.t)),
+            scene->sdistance(v4d_generic<float>(p.x+EPSILON_NORMAL, p.y, p.z, p.t)) - scene->sdistance(v4d_generic<float>(p.x-EPSILON_NORMAL, p.y, p.z, p.t)),
+            scene->sdistance(v4d_generic<float>(p.x+EPSILON_NORMAL, p.y, p.z, p.t)) - scene->sdistance(v4d_generic<float>(p.x-EPSILON_NORMAL, p.y, p.z, p.t))
+                            };
 
+
+}
 
 float RayMarch(v4d_generic<float> origin, v4d_generic<float> direction, Hittable* scene, float epsilon=EPSILON) {
 
@@ -56,9 +66,9 @@ float RayMarch(v4d_generic<float> origin, v4d_generic<float> direction, Hittable
         float min_dist = scene->sdistance(p);
 
         dist += min_dist;
-        p = direction*dist;
+        p += direction*min_dist;
 
-        if(min_dist < epsilon || min_dist > MAX_DISTANCE){
+        if(min_dist < epsilon || dist >= MAX_DISTANCE){
             return dist;
         }
     }
@@ -81,7 +91,7 @@ private:
     double speed;
     float x = 0;
     float y = 0;
-    float z = 10;
+    float z = 6;
     float t = 0;
     Hittable* scene;
 
@@ -90,46 +100,28 @@ public:
     {
         // Name you application
         sAppName = "Example";
-        speed = 1;
+        speed = 20;
     }
 
     bool OnUserCreate() override
     {
         screen = tScreen{v4d_generic<float>{-1.5, -1, 1, 0}, 3.0, 2.0};
 
-        v4d_generic<float> origin{0, 0, 0, 0};
 
-        auto seg = Segment{v4d_generic<float>{0, 0, 10, 0}, v4d_generic<float>{1, 0, 0, 0}, 1};
-        auto sphere = Sphere{v4d_generic<float>{0,0,10,0}, 6};
-        scene = &sphere;
-
-        
-        for (int p_x = 0; p_x < ScreenWidth(); p_x++)
-        {
-            for (int p_y = 0; p_y < ScreenHeight(); p_y++)
-            {
-                v4d_generic<float> direction = screen.top_left + v4d_generic<float>{screen.width*p_x/ScreenWidth(), screen.height*p_y/ScreenHeight(), 0, 0};
-                Draw(p_x, p_y, olc::BLACK);
-                auto dist = RayMarch(origin, direction, scene);
-                if(dist< (MAX_DISTANCE >> 2)){
-                     Draw(p_x, p_y, olc::GREEN);
-                }
-                
-            }
-        }
         return true;
     }
 
     bool OnUserUpdate(float fElapsedTime) override
     {
-        t += speed / 100;
-        z -= speed / 100;
+        // t += speed*fElapsedTime / 100;
+        z -= speed*fElapsedTime / 100;
         v4d_generic<float> origin{0, 0, 0, 0};
 
-        auto seg = Segment{v4d_generic<float>{x, y, z, t}, v4d_generic<float>{1, 0, 0, 0}, 1};
-        auto sphere = Sphere{v4d_generic<float>{x,y,z,t}, 6};
+        auto seg = Segment{v4d_generic<float>{x, y, z, t}, v4d_generic<float>{1, 0, 0, 0}, 0.1};
+        auto sphere = Sphere{v4d_generic<float>{x, y, z, t}, 1};
         scene = &sphere;
 
+        auto sphere_dist = scene->sdistance(origin);
         
         for (int p_x = 0; p_x < ScreenWidth(); p_x++)
         {
@@ -138,8 +130,9 @@ public:
                 v4d_generic<float> direction = screen.top_left + v4d_generic<float>{screen.width*p_x/ScreenWidth(), screen.height*p_y/ScreenHeight(), 0, 0};
                 Draw(p_x, p_y, olc::BLACK);
                 auto dist = RayMarch(origin, direction, scene);
-                if(dist< (MAX_DISTANCE >> 2)){
-                     Draw(p_x, p_y, olc::GREEN);
+                if(dist< MAX_DISTANCE ){
+                    olc::Pixel color = olc::Pixel(0, 255*(0.5f - (dist-sphere_dist)/MAX_DISTANCE*5), 0);
+                    Draw(p_x, p_y, color);
                 }
                 
             }
@@ -152,6 +145,13 @@ public:
 
 int main()
 {
+    v4d_generic<float> a{1,0,0,0};
+    a = v4d_generic<v4d_generic<float>>{
+                                        v4d_generic<float>{1, 0, 0, 0},
+                                        v4d_generic<float>{0, 1, 0, 0},
+                                        v4d_generic<float>{0, 0, 1, 0},
+                                        v4d_generic<float>{0, 0, 0, 1}  } * a;
+
     Example demo;
     if (demo.Construct(400, 300, 1, 1, 0, 0)){
         std::cout<<"demo constructed"<<std::endl;
