@@ -74,7 +74,7 @@ template<class T>
 struct m4x4d_generic
 {
     v4d_generic<v4d_generic<T>> m;
-    inline m4x4d_generic(v4d_generic<t> _x, v4d_generic<t> _y, v4d_generic<t> _z, v4d_generic<t> _t) : m(_x, _y, _z, _t) {}
+    inline m4x4d_generic(v4d_generic<T> _x, v4d_generic<T> _y, v4d_generic<T> _z, v4d_generic<T> _t) : m(_x, _y, _z, _t) {}
     inline m4x4d_generic(m4x4d_generic &rhs) : m(rhs.m) {}
     inline m4x4d_generic(T x1, T x2, T x3, T x4,
                          T y1, T y2, T y3, T y4,
@@ -85,10 +85,7 @@ struct m4x4d_generic
                            v4d_generic{z1, z2, z3, z4},
                            v4d_generic{t1, t2, t3, t4}) {}
 
-    inline m4x4d_generic(m4x4d_generic &rhs) 
-    {
-        
-    }
+
 };
 
 typedef m4x4d_generic<float> mf4x4d;
