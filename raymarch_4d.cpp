@@ -5,6 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <exception>
+#include <cmath>
 #include "v4d.h"
 #include "raymarch_4d.h"
 
@@ -29,7 +30,8 @@ struct Sphere:Hittable{
     }
 
     float sdistance(const vf4d& p) override{
-        return std::min((p-center).len() - radius, p.y + 5);
+
+        return std::min((((p)-center)).len() - radius, p.y + 5);
     }
 };
 
@@ -77,7 +79,7 @@ olc::Pixel getColor(vf4d p, vf4d light_source, Hittable* scene){
     vf4d normal_dir = getNormal(p, scene);
     float projlen = std::clamp(static_cast<double>(normal_dir.dot(light_dir)), 0.0, 1.0);
     
-    if(RayMarch(p + light_dir*EPSILON*2.f, light_dir, scene) < EPSILON + (light_source - p).len()){projlen *= 0.1;}
+    if(RayMarch(p + normal_dir*EPSILON*2.f, light_dir, scene) < EPSILON + (light_source - p).len()){projlen *= 0.1;}
     return olc::Pixel(0, 255*projlen, 0);
 }
 

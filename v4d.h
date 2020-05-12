@@ -1,6 +1,8 @@
 #ifndef VECTOR_4D_BASIC
 #define VECTOR_4D_BASIC
 
+#include <cmath>
+
 template <class T>
 struct v4d_generic
 {
@@ -31,6 +33,7 @@ struct v4d_generic
     inline v4d_generic operator*(const v4d_generic &rhs)  const { return v4d_generic(this->x * rhs.x, this->y * rhs.y, this->z * rhs.z, this->t * rhs.t); }
     inline v4d_generic operator/(const T &rhs)            const { return v4d_generic(this->x / rhs, this->y / rhs, this->z / rhs, this->t / rhs); }
     inline v4d_generic operator/(const v4d_generic &rhs)  const { return v4d_generic(this->x / rhs.x, this->y / rhs.y, this->z / rhs.z, this->t / rhs.t); }
+    inline v4d_generic operator%(const T &rhs)            const { return v4d_generic(std::fmod(this->x, rhs), this->y, this->z, this->t); }
     inline v4d_generic &operator+=(const v4d_generic &rhs)
     {
         this->x += rhs.x;
