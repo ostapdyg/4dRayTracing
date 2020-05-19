@@ -5,3 +5,4 @@ CMakeLists.txt
 .vscode/settings.json
 CMakeLists.txt
 rotating.exe
+raymarch_stst.cpp

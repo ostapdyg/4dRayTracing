@@ -13,15 +13,20 @@ struct v4d_generic
     inline v4d_generic() : x(0), y(0), z(0), t(0) {}
     inline v4d_generic(T _x, T _y, T _z, T _t) : x(_x), y(_y), z(_z), t(_t) {}
     inline v4d_generic(const v4d_generic &v) : x(v.x), y(v.y), z(v.z), t(v.t) {}
+    // Length
     inline T len() const { return std::sqrt(x * x + y * y + z * z + t * t); }
+    // Length squared
     inline T len2() const { return x * x + y * y + z * z + t * t; }
+    // Get normalized vector
     inline v4d_generic norm() const
     {
         T r = 1 / len();
         return v4d_generic(x * r, y * r, z * r, t * r);
     }
+    // Dot product
     inline T dot(const v4d_generic &rhs) const { return this->x * rhs.x + this->y * rhs.y + this->z * rhs.z + this->t * rhs.t; }
-    inline v4d_generic cross(const v4d_generic &rhs1, const v4d_generic &rhs2) const { return v4d_generic(
+    // 4-d Cross product; set rhs2 = vf4d{0,0,0,1} for 3-d
+    inline v4d_generic cross(const v4d_generic &rhs1, const v4d_generic &rhs2 = v4d_generic{0, 0, 0, 1}) const { return v4d_generic(
         this->y * rhs1.z * rhs2.t + this->z * rhs1.t * rhs2.y + this->t * rhs1.y * rhs2.z - this->t * rhs1.z * rhs2.y - this->z * rhs1.y * rhs2.t - this->y * rhs1.t * rhs2.z,
         this->x * rhs1.z * rhs2.t + this->z * rhs1.t * rhs2.x + this->t * rhs1.x * rhs2.z - this->t * rhs1.z * rhs2.x - this->z * rhs1.x * rhs2.t - this->x * rhs1.t * rhs2.z,
         this->x * rhs1.y * rhs2.t + this->y * rhs1.t * rhs2.x + this->t * rhs1.x * rhs2.y - this->t * rhs1.y * rhs2.x - this->y * rhs1.x * rhs2.t - this->x * rhs1.t * rhs2.y,
@@ -29,8 +34,10 @@ struct v4d_generic
     inline v4d_generic operator+(const v4d_generic &rhs) const { return v4d_generic(this->x + rhs.x, this->y + rhs.y, this->z + rhs.z, this->t + rhs.t); }
     inline v4d_generic operator-(const v4d_generic &rhs) const { return v4d_generic(this->x - rhs.x, this->y - rhs.y, this->z - rhs.z, this->t - rhs.t); }
     inline v4d_generic operator*(const T &rhs) const { return v4d_generic(this->x * rhs, this->y * rhs, this->z * rhs, this->t * rhs); }
+    // Pairwise multiplication
     inline v4d_generic operator*(const v4d_generic &rhs) const { return v4d_generic(this->x * rhs.x, this->y * rhs.y, this->z * rhs.z, this->t * rhs.t); }
     inline v4d_generic operator/(const T &rhs) const { return v4d_generic(this->x / rhs, this->y / rhs, this->z / rhs, this->t / rhs); }
+    // Pairwise Division
     inline v4d_generic operator/(const v4d_generic &rhs) const { return v4d_generic(this->x / rhs.x, this->y / rhs.y, this->z / rhs.z, this->t / rhs.t); }
     inline v4d_generic operator%(const T &rhs) const { return v4d_generic(std::fmod(this->x, rhs), this->y, this->z, this->t); }
     inline v4d_generic &operator+=(const v4d_generic &rhs)

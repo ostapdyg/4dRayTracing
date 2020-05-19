@@ -15,6 +15,9 @@
 #define EPSILON_NORMAL 0.001f
 // g++ raymarch_4d.cpp -o rotating.exe -std=c++17 -luser32 -lgdi32 -lopengl32 -lgdiplus -lShlwapi -lstdc++fs -O3
 
+float rf(float min=0.0, float max=1.0){
+    return min + static_cast<float>(rand())/RAND_MAX*(max-min);
+}
 
 struct Hittable
 {
@@ -57,6 +60,20 @@ struct Segment : Hittable
     }
 };
 
+struct Line : Hittable{
+    vf4d origin;
+    float r;
+    Line(const vf4d &origin, float r):origin{origin}, r{r}{
+
+    }
+
+    float sdistance(const vf4d &p_old) override
+    {
+        auto p = p_old - origin;
+        return std::sqrt(p.x*p.x+p.z*p.z + p.t*p.t)-r;
+    }
+};
+
 struct Plane : Hittable
 {
     vf4d origin;
@@ -76,12 +93,17 @@ struct Grid : Hittable
 
     float sdistance(const vf4d &p_old) override
     {
-        auto p = (p_old - origin) / 10;
+        auto p = (p_old - origin) / 2;
         // if (std::abs(p.y) < 1.0)
         // {
         float dx = std::abs(p.x - floor(p.x + 0.5));
         float dz = std::abs(p.z - floor(p.z + 0.5));
-        return (sqrt(p.y * p.y + std::min(dx, dz) * std::min(dx, dz)) - 0.005) * 10;
+        // return (sqrt(p.y * p.y + std::min(dx, dz) * std::min(dx, dz)) - 0.05) * 2;
+        if (std::min(dx, dz) - 0.05 < 0.01)
+        {
+            return MAX_DISTANCE;
+        }
+        return std::abs(p.y) - 0.1;
         // }
         // return MAX_DISTANCE;
     }
@@ -160,7 +182,7 @@ struct Scene : Hittable
 
     float sdistance(const vf4d &p) override
     {
-        vf4d p_tr = rot_matrix * p - origin;
+        vf4d p_tr = rot_matrix * (p - origin);
         float res = MAX_DISTANCE;
         for (Hittable *object : objects)
         {
@@ -178,6 +200,33 @@ struct Scene : Hittable
         }
     }
 };
+
+// struct RotScene : Hittable
+// {
+//     Scene* scene;
+//     mf4d rot_matrix = IDENTITY_M;
+//     // double (*reduce_fn)(float, float) = std::min;
+
+//     RotScene(Scene* scene) : scene{scene} {};
+//     RotScene() : scene{} {};
+
+//     void add_object(Hittable *o)
+//     {
+//         scene->add_object(o);
+//     }
+
+//     float sdistance(const vf4d &p) override
+//     {
+//         vf4d p_tr = rot_matrix * p;
+//         // std::cout<<p.x<<" "<<p.y<<" "<<p.z<<" "<<p.t<<" "<<res<<std::endl;
+//         return scene->sdistance(p);
+//     }
+
+//     ~RotScene()
+//     {
+//         delete scene;
+//     }
+// };
 
 struct tScreen
 {
@@ -204,6 +253,8 @@ private:
     float time = 0;
 
     Scene scene;
+    // Scene _scene;
+    // RotScene scene;
 
 public:
     Renderer()
@@ -219,90 +270,186 @@ public:
         screen = tScreen{vf4d{0, 0, 1, 0}, 1.5, 1.0};
         origin = vf4d{0, 0, 0, 0};
         light_source = vf4d{0, 10, 6, 0};
-        scene.add_object(new Sphere(vf4d{0, -1, 0, 0}, 0.5));
+        // scene.add_object(new Sphere(vf4d{0, -1, 0, 0}, 0.5));
+        scene.add_object(new Line(vf4d{0, 0,0,0}, 2));
         scene.add_object(new Sphere(vf4d{0, -1, 6, 0}, 2));
         scene.add_object(new Plane(vf4d{0, -5, 0, 0}));
-        scene.origin = vf4d{0, 0, 0, 0};
+
+        // for(int i=0; i<5; i++){
+        //     scene.add_object(new Sphere(vf4d{rf(), rf(), rf(), 0}*5, rf(0, 3)));
+        // }
+
         return true;
     }
 
-    void CameraMovements(Scene& scene, vf4d direction, float fElapsedTime){
+    void CameraMovements(Scene &scene, float fElapsedTime)
+    {
         if (olc::PixelGameEngine::GetKey(olc::Key::W).bHeld)
         {
-            scene.origin -= direction * speed * fElapsedTime;
+            scene.origin -= vf4d(0, 0, 1, 0) * speed * fElapsedTime;
         }
         if (olc::PixelGameEngine::GetKey(olc::Key::S).bHeld)
         {
-            scene.origin += direction * speed * fElapsedTime;
+            scene.origin -= vf4d(0, 0, -1, 0) * speed * fElapsedTime;
         }
         if (olc::PixelGameEngine::GetKey(olc::Key::D).bHeld)
         {
-            scene.origin -= mf4d{0, 0, 1, 0,
-                                 0, 1, 0, 0,
-                                 -1, 0, 0, 0,
-                                 0, 0, 0, 1} *
-                            (direction * speed * fElapsedTime);
+            scene.origin -= vf4d(1, 0, 0, 0) * speed * fElapsedTime;
         }
         if (olc::PixelGameEngine::GetKey(olc::Key::A).bHeld)
         {
-            scene.origin += mf4d{0, 0, 1, 0,
-                                 0, 1, 0, 0,
-                                 -1, 0, 0, 0,
-                                 0, 0, 0, 1} *
-                            (direction * speed * fElapsedTime);
+            scene.origin -= vf4d(-1, 0, 0, 0) * speed * fElapsedTime;
         }
         if (olc::PixelGameEngine::GetKey(olc::Key::SPACE).bHeld)
         {
-            scene.origin -= mf4d{1, 0, 0, 0,
-                                 0, 0, 1, 0,
-                                 0, -1, 0, 0,
-                                 0, 0, 0, 1} *
-                            (direction * speed * fElapsedTime);
+            scene.origin -= vf4d(0, 1, 0, 0) * speed * fElapsedTime;
         }
         if (olc::PixelGameEngine::GetKey(olc::Key::SHIFT).bHeld)
         {
-            scene.origin += mf4d{1, 0, 0, 0,
-                                 0, 0, 1, 0,
-                                 0, -1, 0, 0,
-                                 0, 0, 0, 1} *
-                            (direction * speed * fElapsedTime);
+            scene.origin -= vf4d(0, -1, 0, 0) * speed * fElapsedTime;
+        }
+        if (olc::PixelGameEngine::GetKey(olc::Key::Z).bHeld)
+        {
+            scene.origin -= vf4d(0, 0, 0, 1) * speed * fElapsedTime;
+        }
+        if (olc::PixelGameEngine::GetKey(olc::Key::C).bHeld)
+        {
+            scene.origin -= vf4d(0, 0, 0, -1) * speed * fElapsedTime;
         }
     }
 
-    void Camera2Rotations(Scene& scene, float fElapsedTime){
+    void Camera2Rotations(Scene &scene, float fElapsedTime)
+    {
+        float c = cos(fElapsedTime * ang_speed);
+        float s = sin(fElapsedTime * ang_speed);
+        mf4d rot = IDENTITY_M;
+        // ------------------------XZ
         if (olc::PixelGameEngine::GetKey(olc::Key::Q).bHeld)
         {
-            auto rot_xz = mf4d(cos(fElapsedTime * ang_speed), 0, -sin(fElapsedTime * ang_speed), 0,
-                               0,                             1,  0,                             0,
-                               sin(fElapsedTime * ang_speed), 0,  cos(fElapsedTime * ang_speed), 0,
-                               0,                             0,  0,                             1);
-            camera_rot = camera_rot * rot_xz;
+            rot = rot * mf4d(c, 0, -s, 0,
+                             0, 1, 0, 0,
+                             s, 0, c, 0,
+                             0, 0, 0, 1);
         }
         if (olc::PixelGameEngine::GetKey(olc::Key::E).bHeld)
         {
-            auto rot_xz = mf4d(cos(fElapsedTime * ang_speed), 0, sin(fElapsedTime * ang_speed), 0,
-                               0, 1, 0, 0,
-                               -sin(fElapsedTime * ang_speed), 0, cos(fElapsedTime * ang_speed), 0,
-                               0, 0, 0, 1);
-            camera_rot = camera_rot * rot_xz;
+            rot = rot * mf4d(c, 0, s, 0,
+                             0, 1, 0, 0,
+                             -s, 0, c, 0,
+                             0, 0, 0, 1);
         }
+        // ----------------------------YZ
         if (olc::PixelGameEngine::GetKey(olc::Key::F).bHeld)
         {
-            auto rot_xz = mf4d( 1, 0, 0, 0,
-                                0, cos(fElapsedTime * ang_speed), sin(fElapsedTime * ang_speed), 0,
-                                0, -sin(fElapsedTime * ang_speed), cos(fElapsedTime * ang_speed), 0,
-                                0, 0, 0, 1);
-            camera_rot = camera_rot * rot_xz;
+            rot = rot * mf4d(1, 0, 0, 0,
+                             0, c, s, 0,
+                             0, -s, c, 0,
+                             0, 0, 0, 1);
         }
         if (olc::PixelGameEngine::GetKey(olc::Key::R).bHeld)
         {
-            auto rot_xz = mf4d(1, 0, 0, 0,
-                               0, cos(fElapsedTime * ang_speed), -sin(fElapsedTime * ang_speed), 0,
-                               0, sin(fElapsedTime * ang_speed), cos(fElapsedTime * ang_speed), 0,
-                               0, 0, 0, 1);
-            camera_rot = camera_rot * rot_xz;
+            rot = rot * mf4d(1, 0, 0, 0,
+                             0, c, -s, 0,
+                             0, s, c, 0,
+                             0, 0, 0, 1);
         }
+        // ----------------------------XY
+        if (olc::PixelGameEngine::GetKey(olc::Key::K1).bHeld)
+        {
+            rot = rot * mf4d(c, s, 0, 0,
+                             -s, c, 0, 0,
+                             0, 0, 1, 0,
+                             0, 0, 0, 1);
+        }
+        if (olc::PixelGameEngine::GetKey(olc::Key::K3).bHeld)
+        {
+            rot = rot * mf4d(c, -s, 0, 0,
+                             s, c, 0, 0,
+                             0, 0, 1, 0,
+                             0, 0, 0, 1);
+        }
+        // ---------------------------ZT
+        if (olc::PixelGameEngine::GetKey(olc::Key::K).bHeld)
+        {
+            rot = rot * mf4d(1, 0, 0, 0,
+                             0, 1, 0, 0,
+                             0, 0, c, s,
+                             0, 0, -s, c);
+        }
+        if (olc::PixelGameEngine::GetKey(olc::Key::L).bHeld)
+        {
+            rot = rot * mf4d(1, 0, 0, 0,
+                             0, 1, 0, 0,
+                             0, 0, c,-s,
+                             0, 0, s, c);
+        }
+        scene.rot_matrix = scene.rot_matrix * rot;
+
+        scene.origin = rot.transposed() * scene.origin;
     }
+
+    void DrawMinimap(int map_xp, int map_yp, int map_wp, int map_hp, const vf4d &vx, const vf4d &vy, const vf4d &disp)
+    {
+        // auto right_screen_h = ScreenHeight() / 2;
+        // auto right_screen_w = ScreenWidth() / 4;
+        // auto right_screen_x = left_screen_x + left_screen_w;
+        // auto right_screen_y = left_screen_y;
+
+        float map_x = 40;
+        float map_z = 40;
+        for (int p_x = 0; p_x < map_wp; p_x++)
+        {
+            for (int p_y = 0; p_y < map_hp; p_y++)
+            {
+                float x = map_x * (p_x / static_cast<float>(map_wp) - 0.5);
+                float y = -map_z * (p_y / static_cast<float>(map_hp) - 0.5);
+
+                float col;
+                // Objects
+                vf4d p = vx * x + vy * y;
+                if (scene.sdistance(p) < 0.0)
+                {
+
+                    col = 0.6;
+                }
+                else
+                {
+                    col = 0;
+                }
+                // Grid
+                if ((std::abs(x - floor(x)) < 0.1) ||
+                    (std::abs(y - floor(y)) < 0.1))
+                {
+                    col += 0.2;
+                }
+                // View
+                // if ((y < 0) || ((x / y - (screen.center.x - screen.width / 2) / screen.center.z < 0.0) || (x / y - (screen.center.x + screen.width / 2) / screen.center.z > 0.0)))
+                // {
+                //     col *= 0.2;
+                // }
+
+                vf4d proj = (p - origin);
+                proj = proj/std::abs(proj.z) * screen.center.z; // displasement on screen
+                if (abs(proj.x - screen.center.x) > screen.width / 2 || abs(proj.y - screen.center.y) > screen.height / 2 || proj.z < 0)
+                {
+                    col *= 0.2;
+                }
+                // Borders
+                if (p_x * (map_wp - p_x - 1) * p_y * (map_hp - p_y - 1) == 0)
+                {
+                    col = 1;
+                }
+                Draw(p_x + map_xp, p_y + map_yp, olc::PixelF(0, col, 0));
+            }
+        }
+        auto center_x = map_wp / 2;
+        auto center_y = map_hp / 2;
+        // DrawLine(center_x, center_y, )
+        DrawTriangle(center_x + map_xp, center_y + 5 + map_yp,
+                     center_x - 3 + map_xp, center_y - 2 + map_yp,
+                     center_x + 3 + map_xp, center_y - 2 + map_yp,
+                     olc::WHITE);
+    };
 
     bool OnUserUpdate(float fElapsedTime) override
     {
@@ -315,7 +462,7 @@ public:
         float t = t0;
         vf4d direction = screen.center - origin;
 
-        CameraMovements(scene, camera_rot*direction, fElapsedTime);
+        CameraMovements(scene, fElapsedTime);
         Camera2Rotations(scene, fElapsedTime);
         // scene.origin += vf4d{r*cos(time*speed), r*sin(time*speed), r*sin(time*speed), 0};
         // auto rot_xz = mf4d(cos(time * speed), 0, -sin(time * speed), 0,
@@ -340,9 +487,6 @@ public:
             {
                 vf4d ray_direction = direction + vf4d{screen.width * (static_cast<float>(p_x) / left_screen_w - 0.5),
                                                       -screen.height * (static_cast<float>(p_y) / left_screen_h - 0.5), 0, 0};
-
-                ray_direction = camera_rot * ray_direction;
-
                 auto dist = RayMarch(origin, ray_direction, &scene);
                 float col_green = 0;
                 float col_red = 0;
@@ -350,18 +494,17 @@ public:
                 if (dist < MAX_DISTANCE)
                 {
                     col_green = getColor(origin + ray_direction * dist, light_source, &scene);
-
                 }
                 else
                 {
                     // Draw Background
                     float fbg_col = ray_direction.norm().dot((light_source - origin).norm());
-                    int ibg_col = fbg_col * fbg_col * fbg_col * fbg_col*0.8;
+                    int ibg_col = fbg_col * fbg_col * fbg_col * fbg_col * 0.8;
                     col_green = ibg_col;
                     col_red = ibg_col;
                     col_blue = ibg_col;
                 }
-                if (std::abs(ray_direction.y) < 0.001)
+                if (std::abs(ray_direction.y) < 0.001 || std::abs(ray_direction.x) < 0.001)
                 {
                     col_red += 0.2;
                 }
@@ -370,51 +513,54 @@ public:
         }
 
         //------------ 2D --------------
-        auto right_screen_h = ScreenHeight();
-        auto right_screen_w = ScreenWidth() / 2;
-        auto right_screen_x = ScreenWidth() - right_screen_w;
-        auto right_screen_y = ScreenHeight() - right_screen_h;
+        auto map_h = ScreenHeight() / 2;
+        auto map_w = ScreenWidth() / 4;
+        auto map0_x = left_screen_x + left_screen_w;
+        auto map0_y = left_screen_y;
+        DrawMinimap(map0_x, map0_y, map_w, map_h, vf4d(1, 0, 0, 0), vf4d{0, 0, 1, 0}, vf4d{0, 0, 0, 0});                 // XZ
+        DrawMinimap(map0_x + map_w, map0_y, map_w, map_h, vf4d(0, 1, 0, 0), vf4d{0, 0, 1, 0}, vf4d{0, 0, 0, 0});         // YZ
+        DrawMinimap(map0_x, map0_y + map_h, map_w, map_h, vf4d(0, 0, 0, 1), vf4d{0, 0, 1, 0}, vf4d{0, 0, 0, 0});         // TZ
+        DrawMinimap(map0_x + map_w, map0_y + map_h, map_w, map_h, vf4d(1, 0, 0, 0), vf4d{0, 1, 0, 0}, vf4d{0, 0, 0, 0}); //XY
 
-        float map_x = 40;
-        float map_z = 40;
-        for (int p_x = 0; p_x < right_screen_w; p_x++)
-        {
-            for (int p_y = 0; p_y < right_screen_h; p_y++)
-            {
-                float x = map_x * (p_x / static_cast<float>(right_screen_w) - 0.5);
-                float z = -map_z * (p_y / static_cast<float>(right_screen_h) - 0.5);
+        // float map_x = 20;
+        // float map_z = 20;
+        // for (int p_x = 0; p_x < right_screen_w; p_x++)
+        // {
+        //     for (int p_y = 0; p_y < right_screen_h; p_y++)
+        //     {
+        //         float x = map_x * (p_x / static_cast<float>(right_screen_w) - 0.5);
+        //         float z = -map_z * (p_y / static_cast<float>(right_screen_h) - 0.5);
 
-                vf4d p = vf4d(x, 0, z, 0);
-                vf4d p_rot = camera_rot * (p - scene.origin);
-                float col;
-                if (scene.sdistance(camera_rot*p) < 0.0)
-                {
+        //         vf4d p = vf4d(x, 0, z, 0);
+        //         float col;
+        //         if (scene.sdistance(p) < 0.0)
+        //         {
 
-                    col = 0.6;
-                }
-                else
-                {
-                    col = 0;
-                }
-                if ((std::abs(p_rot.x - floor(p_rot.x)) < 0.1) ||
-                    (std::abs(p_rot.z - floor(p_rot.z)) < 0.1))
-                {
-                    col += 0.2;
-                }
-                if ((z < 0) || ((x / z - (screen.center.x - screen.width / 2) / screen.center.z < 0.0) || (x / z - (screen.center.x + screen.width / 2) / screen.center.z > 0.0)))
-                {
-                    col *= 0.2;
-                }
-                Draw(p_x + right_screen_x, p_y + right_screen_y, olc::PixelF(0, col, 0));
-            }
-        }
-        auto center_x = right_screen_w / 2;
-        auto center_y = right_screen_h / 2;
-        // DrawLine(center_x, center_y, )
-        DrawTriangle(center_x + right_screen_x, center_y + 5 + right_screen_y,
-                     center_x - 3 + right_screen_x, center_y - 2 + right_screen_y,
-                     center_x + 3 + right_screen_x, center_y - 2 + right_screen_y,
-                     olc::WHITE);
+        //             col = 0.6;
+        //         }
+        //         else
+        //         {
+        //             col = 0;
+        //         }
+        //         if ((std::abs(x - floor(x)) < 0.1) ||
+        //             (std::abs(z - floor(z)) < 0.1))
+        //         {
+        //             col += 0.2;
+        //         }
+        //         if ((z < 0) || ((x / z - (screen.center.x - screen.width / 2) / screen.center.z < 0.0) || (x / z - (screen.center.x + screen.width / 2) / screen.center.z > 0.0)))
+        //         {
+        //             col *= 0.2;
+        //         }
+        //         Draw(p_x + right_screen_x, p_y + right_screen_y, olc::PixelF(0, col, 0));
+        //     }
+        // }
+        // auto center_x = right_screen_w / 2;
+        // auto center_y = right_screen_h / 2;
+        // // DrawLine(center_x, center_y, )
+        // DrawTriangle(center_x + right_screen_x, center_y + 5 + right_screen_y,
+        //              center_x - 3 + right_screen_x, center_y - 2 + right_screen_y,
+        //              center_x + 3 + right_screen_x, center_y - 2 + right_screen_y,
+        //              olc::WHITE);
 
         return true;
     };
