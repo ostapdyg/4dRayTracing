@@ -11,8 +11,15 @@
 
 #define MAX_DISTANCE 100
 #define MAX_STEPS 100
+
+#define SHADOWS_MAX_STEPS 10
+#define SHADOWS_EPSILON 0.01f
+
 #define EPSILON 0.1f
 #define EPSILON_NORMAL 0.001f
+
+// #define SHADOWS
+
 // g++ raymarch_4d.cpp -o rotating.exe -std=c++17 -luser32 -lgdi32 -lopengl32 -lgdiplus -lShlwapi -lstdc++fs -O3
 
 float rf(float min = 0.0, float max = 1.0)
@@ -26,6 +33,8 @@ struct Hittable
 };
 
 float RayMarch(vf4d origin, vf4d direction, Hittable *scene, float epsilon = EPSILON);
+
+float GetShadows(vf4d origin, vf4d direction, Hittable *scene, float light_dist);
 
 struct Sphere : Hittable
 {
@@ -60,14 +69,14 @@ struct Hypercube : Hittable
         p.y = abs(p.y);
         p.z = abs(p.z);
         p.t = abs(p.t);
-        p = p - vf4d{r,r,r,r};
+        p = p - vf4d{r, r, r, r};
         // auto res = ((p - center)).len() - radius;
         // std::cout<<p.x<<" "<<p.y<<" "<<p.z<<" "<<p.t<<" "<<res<<std::endl;
         auto x = abs(p.x);
         auto y = abs(p.y);
         auto z = abs(p.z);
         auto t = abs(p.t);
-        auto ap = vf4d{x,y,z,t};
+        auto ap = vf4d{x, y, z, t};
 
         // if (std::abs(x - y) < 0.1)
         // {
@@ -107,7 +116,7 @@ struct Hypercube : Hittable
         //     t -= 0.1;
         // }
 
-        return (ap+p).len()/2 + std::min(std::max(std::max(p.x,std::max(p.y,p.z)), p.t),0.0f) - 0.1;
+        return (ap + p).len() / 2 + std::min(std::max(std::max(p.x, std::max(p.y, p.z)), p.t), 0.0f) - 0.1;
         // len(p) + min(0, max(x,y,z,t))
         // return std::max(std::max(x, y), std::max(z, t)) - radius;
     }
@@ -143,6 +152,7 @@ struct Line : Hittable
         return std::sqrt(p.x * p.x + p.z * p.z + p.t * p.t) - r;
     }
 };
+
 struct Torus : Hittable
 {
     vf4d origin;
@@ -167,8 +177,8 @@ struct Torus : Hittable
         //     p;
         // d = min(d,
         // max(
-        float r = sqrt(p.x * p.x + p.z * p.z + p.t*p.t) - r1;
-        return std::abs(sqrt(r * r + p.y * p.y)) - r2;
+        float r = sqrt(p.x * p.x + p.z * p.z) - r1;
+        return std::abs(sqrt(r * r + p.y * p.y + p.t * p.t)) - r2;
         // return std::max(p.len() - r1d, r2-p.len());
     }
 };
@@ -226,9 +236,50 @@ vf4d getNormal(vf4d p, Hittable *scene)
                 scene->sdistance(vf4d(p.x, p.y + EPSILON_NORMAL, p.z, p.t)),
                 scene->sdistance(vf4d(p.x, p.y, p.z + EPSILON_NORMAL, p.t)),
                 scene->sdistance(vf4d(p.x, p.y, p.z, p.t + EPSILON_NORMAL))} -
-                // d} -
+            // d} -
             vf4d{d, d, d, d});
 }
+
+struct Scene : Hittable
+{
+    std::vector<Hittable *> objects;
+    mf4d rot_matrix = IDENTITY_M;
+    vf4d origin = vf4d(0, 0, 0, 0);
+    // double (*reduce_fn)(float, float) = std::min;
+
+    Scene() : objects{} {};
+
+    void add_object(Hittable *o)
+    {
+        objects.push_back(o);
+    }
+
+    float sdistance(const vf4d &p) override
+    {
+        vf4d p_tr = transform_space(p);
+        float res = MAX_DISTANCE;
+        for (Hittable *object : objects)
+        {
+            res = std::min(object->sdistance(p_tr), res);
+        }
+        // std::cout<<p.x<<" "<<p.y<<" "<<p.z<<" "<<p.t<<" "<<res<<std::endl;
+        return res;
+    }
+
+    inline vf4d transform_space(const vf4d &p)
+    {
+        return rot_matrix * (p - origin);
+    };
+
+    ~Scene()
+    {
+        for (Hittable *object : objects)
+        {
+            delete object;
+        }
+    }
+};
+
 float getColor(vf4d p, vf4d light_source, Hittable *scene)
 {
     vf4d light_dir = (light_source - p).norm();
@@ -240,13 +291,15 @@ float getColor(vf4d p, vf4d light_source, Hittable *scene)
     // }
     normal_dir = normal_dir.norm();
 
-    float projlen = std::clamp(static_cast<double>(normal_dir.dot(light_dir)), 0.0, 0.8)+0.2;
-    // float projlen = 1;
-    if (RayMarch(p + normal_dir * EPSILON * 2.f, light_dir, scene) < EPSILON + (light_source - p).len())
-    {
-        projlen *= 0.2;
-    }
-
+    float projlen = std::clamp(static_cast<double>(normal_dir.dot(light_dir)), 0.0, 0.8) + 0.2;
+// float projlen = 1;
+#ifdef SHADOWS
+    // if (RayMarch(p + normal_dir * EPSILON * 2.f, light_dir, scene) < EPSILON + (light_source - p).len())
+    // {
+    //     projlen *= 0.2;
+    // }
+    projlen *= GetShadows(p, light_dir, scene, (light_source - p).len());
+#endif
     return projlen / (p.len() * 0.1 + 1.0);
 }
 
@@ -255,8 +308,8 @@ float RayMarch(vf4d origin, vf4d direction, Hittable *scene, float epsilon)
 
     float dist = 0;
     vf4d p{origin};
-
-    for (int i = 0; i < MAX_STEPS; i++)
+    int i;
+    for (i = 0; i < MAX_STEPS; i++)
     {
         float min_dist = scene->sdistance(p);
 
@@ -271,68 +324,29 @@ float RayMarch(vf4d origin, vf4d direction, Hittable *scene, float epsilon)
     return dist;
 };
 
-struct Scene : Hittable
+float GetShadows(vf4d origin, vf4d direction, Hittable *scene, float light_dist)
 {
-    std::vector<Hittable *> objects;
-    mf4d rot_matrix = IDENTITY_M;
-    vf4d origin = vf4d(0, 0, 0, 0);
-    // double (*reduce_fn)(float, float) = std::min;
+    float res = 0.8;
+    vf4d p{origin};
+    int steps;
+    float total_dist = 0;
 
-    Scene() : objects{} {
-
-              };
-    void add_object(Hittable *o)
+    for (total_dist = 0.1, steps = 0;
+         steps < SHADOWS_MAX_STEPS && total_dist < light_dist;
+         steps++)
     {
-        objects.push_back(o);
-    }
+        float d = scene->sdistance(origin + direction * total_dist);
 
-    float sdistance(const vf4d &p) override
-    {
-        vf4d p_tr = rot_matrix * (p - origin);
-        float res = MAX_DISTANCE;
-        for (Hittable *object : objects)
+        if (d < SHADOWS_EPSILON)
         {
-            res = std::min(object->sdistance(p_tr), res);
+            return 0.2;
         }
-        // std::cout<<p.x<<" "<<p.y<<" "<<p.z<<" "<<p.t<<" "<<res<<std::endl;
-        return res;
+        res = std::min(res, 2 * d / total_dist);
+        total_dist += d;
     }
-
-    ~Scene()
-    {
-        for (Hittable *object : objects)
-        {
-            delete object;
-        }
-    }
+    return res + 0.2;
+    // return 1.0;
 };
-
-// struct RotScene : Hittable
-// {
-//     Scene* scene;
-//     mf4d rot_matrix = IDENTITY_M;
-//     // double (*reduce_fn)(float, float) = std::min;
-
-//     RotScene(Scene* scene) : scene{scene} {};
-//     RotScene() : scene{} {};
-
-//     void add_object(Hittable *o)
-//     {
-//         scene->add_object(o);
-//     }
-
-//     float sdistance(const vf4d &p) override
-//     {
-//         vf4d p_tr = rot_matrix * p;
-//         // std::cout<<p.x<<" "<<p.y<<" "<<p.z<<" "<<p.t<<" "<<res<<std::endl;
-//         return scene->sdistance(p);
-//     }
-
-//     ~RotScene()
-//     {
-//         delete scene;
-//     }
-// };
 
 struct tScreen
 {
@@ -368,14 +382,14 @@ public:
         // Name you application
         sAppName = "Example";
         speed = 2;
-        ang_speed = 0.5;
+        ang_speed = 1;
     }
 
     bool OnUserCreate() override
     {
         screen = tScreen{vf4d{0, 0, 1, 0}, 1.5, 1.0};
         origin = vf4d{0, 0, 0, 0};
-        light_source = vf4d{0, 0, 0, 0};
+        light_source = vf4d{0, 5, 0, 0};
         scene.add_object(new Sphere(vf4d{2, -1, 0, 0}, 2.0));
         // scene.add_object(new Line(vf4d{0, 0, 2, 0}, 2));
 
@@ -496,11 +510,21 @@ public:
                              0, 0, c, -s,
                              0, 0, s, c);
         }
+        if (olc::PixelGameEngine::GetKey(olc::Key::ESCAPE).bHeld)
+        {
+            rot = scene.rot_matrix.transposed();
+        }
+
         scene.rot_matrix = scene.rot_matrix * rot;
 
         scene.origin = rot.transposed() * scene.origin;
     }
 
+    // Draw Minimap:
+    // map_xp, map_yp: coordinates of the top-left corner on the screen n pixels
+    // map_wp, map_hp: coordinates of map width and height in pixels
+    // vx, vy: vectors to form map`s x and y axis
+    // disp: displacement of map from camera - not used yet(and may never be)
     void DrawMinimap(int map_xp, int map_yp, int map_wp, int map_hp, const vf4d &vx, const vf4d &vy, const vf4d &disp)
     {
         // auto right_screen_h = ScreenHeight() / 2;
@@ -517,42 +541,57 @@ public:
                 float x = map_x * (p_x / static_cast<float>(map_wp) - 0.5);
                 float y = -map_z * (p_y / static_cast<float>(map_hp) - 0.5);
 
-                float col;
-                // Objects
+                float col = 0;
+                float col_red = 0;
+
                 vf4d p = vx * x + vy * y;
+                vf4d p_tr = scene.rot_matrix * p;
+
+                // Objects
                 if (scene.sdistance(p) < 0.0)
                 {
 
                     col = 0.6;
                 }
-                else
+                // Coordinate lines:
+
+                if ((std::abs(p_tr.dot(vx)) < 0.1) || (std::abs(p_tr.dot(vy)) < 0.1)) // Related to scene
                 {
-                    col = 0;
+                    col += 0.4;
                 }
-                // Grid
-                if ((std::abs(x - floor(x)) < 0.1) ||
-                    (std::abs(y - floor(y)) < 0.1))
+
+                if (std::abs(x) < 0.1 || std::abs(y) < 0.1) // Related to camera
                 {
-                    col += 0.2;
+                    col_red += 0.5;
+                }
+                // Grid on lines
+                else if (((std::abs(x / 2 - floor(x / 2)) < 0.2) && std::abs(y) < 1.0) ||
+                         (std::abs(y / 2 - floor(y / 2)) < 0.2) && std::abs(x) < 1.0)
+                {
+                    col_red += 0.5;
                 }
                 // View
-                // if ((y < 0) || ((x / y - (screen.center.x - screen.width / 2) / screen.center.z < 0.0) || (x / y - (screen.center.x + screen.width / 2) / screen.center.z > 0.0)))
+                if ((y < 0) || ((x / y - (screen.center.x - screen.width / 2) / screen.center.z < 0.0) || (x / y - (screen.center.x + screen.width / 2) / screen.center.z > 0.0)))
+                {
+                    col *= 0.5;
+                }
+
+                vf4d proj = (p - origin);
+                proj = proj / std::abs(proj.z) * screen.center.z; // displasement on screen
+                // ?????????????????? Не пам'ятаю нащо
+                // if (abs(proj.x - screen.center.x) > screen.width / 2 || abs(proj.y - screen.center.y) > screen.height / 2 || proj.z < 0)
                 // {
                 //     col *= 0.2;
                 // }
 
-                vf4d proj = (p - origin);
-                proj = proj / std::abs(proj.z) * screen.center.z; // displasement on screen
-                if (abs(proj.x - screen.center.x) > screen.width / 2 || abs(proj.y - screen.center.y) > screen.height / 2 || proj.z<0 )
-                {
-                    col *= 0.2;
-                }
                 // Borders
                 if (p_x * (map_wp - p_x - 1) * p_y * (map_hp - p_y - 1) == 0)
                 {
                     col = 1;
                 }
-                Draw(p_x + map_xp, p_y + map_yp, olc::PixelF(0, col, 0));
+                col = std::min(col, 1.0f);
+                col_red = std::min(col_red, 1.0f);
+                Draw(p_x + map_xp, p_y + map_yp, olc::PixelF(col_red, col, 0));
             }
         }
         auto center_x = map_wp / 2;
@@ -564,118 +603,73 @@ public:
                      olc::WHITE);
     };
 
-    bool OnUserUpdate(float fElapsedTime) override
+    // Draw Camera view:
+    // view_xp, view_yp: coordinates of the top-left corner on the screen n pixels
+    // view_wp, view_hp: coordinates of view width and height in pixels
+    // direction: direction the camera is facing
+    void DrawView(int view_xp, int view_yp, int view_wp, int view_hp, const vf4d &direction)
     {
-        // t -= 10*speed*fElapsedTime / 100;
-        float r = 2;
-        time = fElapsedTime;
-        float x = x0 + r * cos(time * speed);
-        float z = z0 + r * sin(time * speed);
-        float y = y0;
-        float t = t0;
-        vf4d direction = screen.center - origin;
-        // char title[20];
-        // sprintf(title, "FPS: %i", 10);
-        // olc::platform->SetWindowTitle(std::string(title));
-        CameraMovements(scene, fElapsedTime);
-        Camera2Rotations(scene, fElapsedTime);
-        // scene.origin += vf4d{r*cos(time*speed), r*sin(time*speed), r*sin(time*speed), 0};
-        // auto rot_xz = mf4d(cos(time * speed), 0, -sin(time * speed), 0,
-        //                    0, 1, 0, 0,
-        //                    sin(time * speed), 0, cos(time * speed), 0,
-        //                    0, 0, 0, 1);
-        // scene.rot_matrix = scene.rot_matrix * rot_xz;
+        // vf4d scene_light_source = scene.rot_matrix.transposed() * light_source + scene.origin;
+        vf4d scene_light_source = light_source;
 
-        // auto rot_yx = mf4d(1, 0,                 0,                 0,
-        //                    0, cos(time * speed), sin(time * speed), 0,
-        //                    0,-sin(time * speed), cos(time * speed), 0,
-        //                    0, 0,                 0,                 1);
-
-        // -----------------------------3D-----------------------------------
-        auto left_screen_h = ScreenHeight();
-        auto left_screen_w = ScreenWidth() / 2;
-        auto left_screen_x = 0;
-        auto left_screen_y = 0;
-        for (int p_x = 0; p_x < left_screen_w; p_x++)
+        for (int p_x = 0; p_x < view_wp; p_x++)
         {
-            for (int p_y = 0; p_y < left_screen_h; p_y++)
+            for (int p_y = 0; p_y < view_hp; p_y++)
             {
-                vf4d ray_direction = direction + vf4d{screen.width * (static_cast<float>(p_x) / left_screen_w - 0.5),
-                                                      -screen.height * (static_cast<float>(p_y) / left_screen_h - 0.5), 0, 0};
+                vf4d ray_direction = direction + vf4d{screen.width * (static_cast<float>(p_x) / view_wp - 0.5f),
+                                                      -screen.height * (static_cast<float>(p_y) / view_hp - 0.5f), 0, 0};
                 auto dist = RayMarch(origin, ray_direction, &scene);
                 float col_green = 0;
                 float col_red = 0;
                 float col_blue = 0;
                 if (dist < MAX_DISTANCE)
                 {
-                    col_green = getColor(origin + ray_direction * dist, light_source, &scene);
+                    col_green = getColor(origin + ray_direction * dist, scene_light_source, &scene);
                 }
                 else
                 {
                     // Draw Background
-                    float fbg_col = ray_direction.norm().dot((light_source - origin).norm());
-                    int ibg_col = fbg_col * fbg_col * fbg_col * fbg_col * 0.8;
+                    float fbg_col = ray_direction.norm().dot((scene_light_source - origin).norm());
+                    float ibg_col = fbg_col * fbg_col * fbg_col * fbg_col * 0.8;
+                    // float ibg_col = fbg_col * fbg_col;
                     col_green = ibg_col;
                     col_red = ibg_col;
                     col_blue = ibg_col;
                 }
+                // X and Y lines
                 if (std::abs(ray_direction.y) < 0.001 || std::abs(ray_direction.x) < 0.001)
                 {
-                    col_red += 0.2;
+                    col_red += 0.4;
                 }
-                Draw(p_x + left_screen_x, p_y + left_screen_y, olc::PixelF(col_red, col_green, col_blue));
+                Draw(p_x + view_xp, p_y + view_yp, olc::PixelF(col_red, col_green, col_blue));
             }
         }
+    }
 
-        //------------ Minimaps --------------
-        auto map_h = ScreenHeight() / 2;
-        auto map_w = ScreenWidth() / 4;
-        auto map0_x = left_screen_x + left_screen_w;
-        auto map0_y = left_screen_y;
-        DrawMinimap(map0_x, map0_y, map_w, map_h, vf4d(1, 0, 0, 0), vf4d{0, 0, 1, 0}, vf4d{0, 0, 0, 0});                 // XZ
-        DrawMinimap(map0_x + map_w, map0_y, map_w, map_h, vf4d(0, 1, 0, 0), vf4d{0, 0, 1, 0}, vf4d{0, 0, 0, 0});         // YZ
-        DrawMinimap(map0_x, map0_y + map_h, map_w, map_h, vf4d(0, 0, 0, 1), vf4d{0, 0, 1, 0}, vf4d{0, 0, 0, 0});         // TZ
-        DrawMinimap(map0_x + map_w, map0_y + map_h, map_w, map_h, vf4d(1, 0, 0, 0), vf4d{0, 1, 0, 0}, vf4d{0, 0, 0, 0}); //XY
+    bool OnUserUpdate(float fElapsedTime) override
+    {
+        // char title[20];
+        // sprintf(title, "FPS: %i", 10);
+        // olc::platform->SetWindowTitle(std::string(title));
 
-        // float map_x = 20;
-        // float map_z = 20;
-        // for (int p_x = 0; p_x < right_screen_w; p_x++)
-        // {
-        //     for (int p_y = 0; p_y < right_screen_h; p_y++)
-        //     {
-        //         float x = map_x * (p_x / static_cast<float>(right_screen_w) - 0.5);
-        //         float z = -map_z * (p_y / static_cast<float>(right_screen_h) - 0.5);
+        CameraMovements(scene, fElapsedTime);
+        Camera2Rotations(scene, fElapsedTime);
 
-        //         vf4d p = vf4d(x, 0, z, 0);
-        //         float col;
-        //         if (scene.sdistance(p) < 0.0)
-        //         {
+        // -----------------------------3D-----------------------------------
+        vf4d direction = screen.center - origin;
 
-        //             col = 0.6;
-        //         }
-        //         else
-        //         {
-        //             col = 0;
-        //         }
-        //         if ((std::abs(x - floor(x)) < 0.1) ||
-        //             (std::abs(z - floor(z)) < 0.1))
-        //         {
-        //             col += 0.2;
-        //         }
-        //         if ((z < 0) || ((x / z - (screen.center.x - screen.width / 2) / screen.center.z < 0.0) || (x / z - (screen.center.x + screen.width / 2) / screen.center.z > 0.0)))
-        //         {
-        //             col *= 0.2;
-        //         }
-        //         Draw(p_x + right_screen_x, p_y + right_screen_y, olc::PixelF(0, col, 0));
-        //     }
-        // }
-        // auto center_x = right_screen_w / 2;
-        // auto center_y = right_screen_h / 2;
-        // // DrawLine(center_x, center_y, )
-        // DrawTriangle(center_x + right_screen_x, center_y + 5 + right_screen_y,
-        //              center_x - 3 + right_screen_x, center_y - 2 + right_screen_y,
-        //              center_x + 3 + right_screen_x, center_y - 2 + right_screen_y,
-        //              olc::WHITE);
+        int map_hp = ScreenHeight() / 2;
+        int map_wp = ScreenWidth() / 4;
+        auto view_hp = ScreenHeight();
+        auto view_wp = ScreenWidth() / 2;
+
+        DrawMinimap(0, 0, map_wp, map_hp, vf4d(1, 0, 0, 0), vf4d{0, 0, 1, 0}, vf4d{0, 0, 0, 0});      // XZ
+        DrawMinimap(0, map_hp, map_wp, map_hp, vf4d(0, 1, 0, 0), vf4d{0, 0, 1, 0}, vf4d{0, 0, 0, 0}); // YZ
+
+        DrawView(map_wp, 0, view_wp, view_hp, direction); //3D
+
+        DrawMinimap(map_wp + view_wp, 0, map_wp, map_hp, vf4d(0, 0, 0, 1), vf4d{0, 0, 1, 0}, vf4d{0, 0, 0, 0});      // TZ
+        DrawMinimap(map_wp + view_wp, map_hp, map_wp, map_hp, vf4d(1, 0, 0, 0), vf4d{0, 1, 0, 0}, vf4d{0, 0, 0, 0}); //XY
 
         return true;
     };
